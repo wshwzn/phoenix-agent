@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: phoenix-mcp-server
+  lifecycle:
+    timeout-per-shutdown-phase: 10s
+
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:18081}
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  info:
+    env:
+      enabled: true
+
+info:
+  application:
+    name: ${spring.application.name}
+    description: Phoenix 目标机工具服务骨架（尚未提供 MCP 协议）

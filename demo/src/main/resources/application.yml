@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: phoenix-demo
+  lifecycle:
+    timeout-per-shutdown-phase: 10s
+
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:18082}
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  info:
+    env:
+      enabled: true
+
+info:
+  application:
+    name: ${spring.application.name}
+    description: Phoenix 最小目标应用（尚未接入 Redis）

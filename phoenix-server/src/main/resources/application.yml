@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: phoenix-server
+  lifecycle:
+    timeout-per-shutdown-phase: 10s
+
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:18080}
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  info:
+    env:
+      enabled: true
+
+info:
+  application:
+    name: ${spring.application.name}
+    description: Phoenix Agent 控制端（初始化阶段）

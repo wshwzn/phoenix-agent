@@ -1,0 +1,32 @@
+# Maven 与编译产物
+**/target/
+*.class
+
+# IDEA 与本地编辑器配置
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# 环境配置与密钥
+.env
+.env.*
+!.env.example
+**/application-local.yml
+**/application-local.yaml
+**/application-local.properties
+*.pem
+*.key
+*.p12
+*.jks
+
+# 运行数据与临时文件
+logs/
+*.log
+data/
+tmp/
+.DS_Store
+Thumbs.db
+hs_err_pid*
