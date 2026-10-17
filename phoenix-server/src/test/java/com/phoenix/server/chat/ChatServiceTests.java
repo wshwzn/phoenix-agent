@@ -202,6 +202,40 @@ class ChatServiceTests {
     }
 
     /**
+     * 同批包含越权目标时，即便前一个工具合法也不会先执行。
+     */
+    @Test
+    void shouldRejectWholeBatchContainingUnauthorizedTarget() {
+        when(client.listTools()).thenReturn(List.of(ToolSpecification.builder().name("ping").build(),
+                ToolSpecification.builder().name("inspect_application").build(), ToolSpecification.builder().name("read_recent_logs").build()));
+        var allowed = ToolExecutionRequest.builder().id("allowed").name("inspect_application")
+                .arguments("{\"targetId\":\"demo-local\"}").build();
+        var blocked = ToolExecutionRequest.builder().id("blocked").name("read_recent_logs")
+                .arguments("{\"targetId\":\"other-machine\"}").build();
+        when(model.chat(any(ChatRequest.class))).thenReturn(ChatResponse.builder()
+                .aiMessage(AiMessage.builder().toolExecutionRequests(List.of(allowed, blocked)).build()).build());
+        assertThatThrownBy(() -> service(new ChatProperties(4, 6)).chat("检查"))
+                .isInstanceOfSatisfying(ChatExecutionException.class,
+                        exception -> assertThat(exception.code()).isEqualTo("INVALID_TOOL_REQUEST"));
+        verify(client, times(0)).executeTool(any(ToolExecutionRequest.class));
+    }
+
+    /**
+     * 本地允许但远端尚未发现的工具也不能直接执行。
+     */
+    @Test
+    void shouldBlockUndiscoveredDiagnosticTool() {
+        var request = ToolExecutionRequest.builder().id("missing").name("inspect_redis")
+                .arguments("{\"targetId\":\"demo-local\"}").build();
+        when(model.chat(any(ChatRequest.class))).thenReturn(ChatResponse.builder()
+                .aiMessage(AiMessage.builder().toolExecutionRequests(List.of(request)).build()).build());
+        assertThatThrownBy(() -> service(new ChatProperties(4, 6)).chat("检查"))
+                .isInstanceOfSatisfying(ChatExecutionException.class,
+                        exception -> assertThat(exception.code()).isEqualTo("INVALID_TOOL_REQUEST"));
+        verify(client, times(0)).executeTool(any(ToolExecutionRequest.class));
+    }
+
+    /**
      * 构造待测服务，不创建额外模型或共享会话状态。
      */
     private ChatServiceImpl service(ChatProperties properties) {

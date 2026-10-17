@@ -4,9 +4,9 @@ Phoenix 面向开发者的应用故障排查场景：通过工具收集证据，
 
 ## 当前进度
 
-目前完成项目初始化、真实 MCP 通信链路和**最小非流式模型对话**：模型可直接回答，也可自主请求 `ping`，后端执行后将工具结果反馈给模型，并在响应中返回调用明细。
+目前支持非流式模型对话和**固定目标的只读故障诊断**：模型自主检查 `demo-local` 应用接口、Redis PING 和近期诊断日志，后端将实际证据反馈给模型，并在响应中返回完整工具明细。
 
-**尚未实现**业务采集与修复工具、诊断任务、审批恢复、RAG、长期记忆和前端。当前 `ping` 只返回工具服务的固定信息，不访问 `demo`，也不代表被排障应用健康。示例应用尚未依赖 Redis，停止 Redis 不会影响当前探活接口。
+**尚未实现**修复工具、持久化诊断任务、审批恢复、RAG、长期记忆和前端。`ping` 仍只证明 MCP 连通；demo 的商品查询已依赖 Redis，停止 Redis 后商品接口失败，但独立探活保持正常。这是演示场景，不是通用机器运维平台。
 
 ## 技术基础
 
@@ -36,7 +36,7 @@ phoenix-agent/
 
 ## 本地运行
 
-在 IDEA 中打开仓库根目录的 `pom.xml`，选择 Java 21 并导入 Maven。运行以下任意入口类即可，不需要 API Key、MySQL、Elasticsearch 或 Docker：
+在 IDEA 中打开仓库根目录的 `pom.xml`，选择 Java 21 并导入 Maven。运行以下入口类即可启动进程，不需要 MySQL 或 Elasticsearch；模型聊天需配置 Key，demo 商品接口需 Redis：
 
 | 模块 | 启动类 | 健康检查 |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ curl.exe http://127.0.0.1:18080/api/mcp/check
 ```json
 {
   "transport": "STREAMABLE_HTTP",
-  "tools": ["ping"],
+  "tools": ["ping", "inspect_application", "inspect_redis", "read_recent_logs"],
   "ping": {
     "service": "phoenix-mcp-server",
     "version": "0.0.1-SNAPSHOT",
@@ -117,9 +117,19 @@ SDK 会在 `base-url` 下追加 `chat/completions`。例如配置 `https://examp
 
 接口返回 `requestId`、`answer`、`toolCalls`。调用明细包含工具调用 ID、名称、参数、结果、状态与耗时；普通问候没有实际调用时 `toolCalls` 为空。模型是否调用由其响应决定，后端没有按用户关键词直接路由工具。
 
-当前每次聊天都先连接 MCP 并发现工具，所以即使模型最后不调用工具，也需要工具服务可用。只允许 `ping`，默认最多 3 轮、总计 3 次调用；同轮多个请求也计入总次数。每个请求独立，没有历史对话；调用明细只在内存和响应中，不落库，日志仅记录请求 ID、代码与数量。失败响应也保留已实际发生的工具调用，不能把网络失败当成检查成功。
+当前每次聊天都先连接 MCP 并发现工具，所以即使模型最后不调用工具，也需要工具服务可用。只允许 `ping` 和三个固定目标的只读工具，默认最多 4 轮、总计 6 次调用；同轮多个请求也计入总次数。每个请求独立，没有历史对话；调用明细只在内存和响应中，不落库。网络或协议执行失败不能伪装成检查成功；成功采集到 Redis 不可用则是有效故障证据。
 
 更完整的配置、错误代码和验证范围见 [模型与工具对话](docs/模型与工具对话.md)。当前没有鉴权，不得开放公网使用真实模型额度。
+
+## 只读排障演示
+
+1. 启动 Docker 服务，在仓库根目录执行 `docker compose -f demo/compose.yaml up -d redis`，使用独立的本机 `16379` 端口。
+2. 启动三个 Java 应用。IDEA 中 demo、MCP 和控制端的工作目录分别设置为 `demo`、`phoenix-mcp-server`、`phoenix-server` 的绝对路径，确保专用日志和外部模型配置按约定读取。
+3. 向 `POST /api/chat` 发送 `{"message":"请检查 demo-local 的商品查询是否正常，结合应用、Redis 和近期日志说明依据"}`。
+4. 执行 `docker compose -f demo/compose.yaml stop redis`，再次请求相同消息。预期商品接口返回 503、Redis 检查失败，Agent 根据证据诊断，而不是声称已经确认容器停止。
+5. 执行 `docker compose -f demo/compose.yaml start redis`，重新检查。历史日志可能仍含旧错误，应以当前探测结果为准。
+
+目前停启操作由开发者手动触发，Agent 不具备重启能力。日志仅包含约定的商品诊断事件，不是完整业务日志。配置、证据格式与故障边界见 [只读故障诊断](docs/只读故障诊断.md)。
 
 ## 测试与打包
 
@@ -135,7 +145,7 @@ java -jar phoenix-server/target/phoenix-server-0.0.1-SNAPSHOT.jar
 
 ## 可选演示组件
 
-仅在需要准备 Redis 时执行，不是当前启动前提，也不会由 Spring Boot 自动执行：
+Redis 不是进程启动或探活的前提，但商品查询需要它。Compose 不会由 Spring Boot 自动执行：
 
 ```powershell
 docker compose -f demo/compose.yaml up -d

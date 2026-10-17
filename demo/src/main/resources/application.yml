@@ -3,6 +3,14 @@ spring:
     name: phoenix-demo
   lifecycle:
     timeout-per-shutdown-phase: 10s
+  data:
+    redis:
+      host: ${PHOENIX_DEMO_REDIS_HOST:127.0.0.1}
+      port: ${PHOENIX_DEMO_REDIS_PORT:16379}
+      connect-timeout: 500ms
+      timeout: 500ms
+      lettuce:
+        shutdown-timeout: 100ms
 
 server:
   address: ${SERVER_ADDRESS:127.0.0.1}
@@ -17,6 +25,9 @@ management:
   endpoint:
     health:
       show-details: never
+  health:
+    redis:
+      enabled: false
   info:
     env:
       enabled: true
@@ -24,4 +35,8 @@ management:
 info:
   application:
     name: ${spring.application.name}
-    description: Phoenix 最小目标应用（尚未接入 Redis）
+    description: Phoenix Redis 故障演示应用（探活不依赖 Redis，商品接口依赖 Redis）
+
+phoenix:
+  demo:
+    diagnostic-log: ${PHOENIX_DEMO_LOG_FILE:./logs/diagnostic.log}

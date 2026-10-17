@@ -11,7 +11,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 验证最小目标应用可以独立提供 HTTP 接口。
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "phoenix.demo.diagnostic-log=target/product-test-diagnostic.log")
 class PhoenixDemoApplicationTests {
 
     @Autowired

@@ -27,6 +27,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -110,6 +111,14 @@ public class McpConnectionIntegrationTests {
         }
 
         /**
+         * 由对话测试切换模拟证据状态，不接触真实 Redis。
+         */
+        @Bean
+        AtomicBoolean fixtureDependencyDown() {
+            return new AtomicBoolean();
+        }
+
+        /**
          * 为协议测试服务配置 Jackson 2 序列化。
          */
         @Bean
@@ -138,15 +147,15 @@ public class McpConnectionIntegrationTests {
         }
 
         /**
-         * 注册符合约定的最小工具，验证生产客户端而非测试替身客户端。
+     * 注册符合约定的协议替身工具，验证生产客户端而非替身客户端。
          */
         @Bean(destroyMethod = "closeGracefully")
         McpSyncServer fixtureServer(HttpServletStreamableServerTransportProvider transport, McpJsonMapper mapper,
-                                   AtomicInteger fixtureToolCalls) {
+                                   AtomicInteger fixtureToolCalls, AtomicBoolean fixtureDependencyDown) {
             var tool = McpSchema.Tool.builder().name("ping")
                     .inputSchema(new McpSchema.JsonSchema("object", Map.of(), List.of(), false, null, null))
                     .build();
-            return McpServer.sync(transport).jsonMapper(mapper)
+            var builder = McpServer.sync(transport).jsonMapper(mapper)
                     .serverInfo("phoenix-mcp-server", "0.0.1-SNAPSHOT")
                     .capabilities(McpSchema.ServerCapabilities.builder().tools(false).build())
                     .toolCall(tool, (exchange, request) -> {
@@ -155,8 +164,54 @@ public class McpConnectionIntegrationTests {
                                 .isError(false)
                                 .addTextContent("{\"service\":\"phoenix-mcp-server\",\"version\":\"0.0.1-SNAPSHOT\",\"status\":\"PONG\"}")
                                 .build();
-                    })
-                    .build();
+                    });
+            for (String name : List.of("inspect_application", "inspect_redis", "read_recent_logs")) {
+                var diagnosticTool = McpSchema.Tool.builder().name(name)
+                        .inputSchema(new McpSchema.JsonSchema("object", Map.of("targetId", Map.of("type", "string")),
+                                List.of("targetId"), false, null, null)).build();
+                builder.toolCall(diagnosticTool, (exchange, request) -> {
+                    fixtureToolCalls.incrementAndGet();
+                    var result = diagnosticEvidence(name, fixtureDependencyDown.get());
+                    try {
+                        return McpSchema.CallToolResult.builder().isError(false)
+                                .addTextContent(mapper.writeValueAsString(result)).build();
+                    } catch (java.io.IOException exception) {
+                        throw new IllegalStateException("测试证据序列化失败", exception);
+                    }
+                });
+            }
+            return builder.build();
+        }
+
+        /**
+         * 构造显式标记为替身的确定性证据，不将其冒充真实采集。
+         */
+        private Map<String, Object> diagnosticEvidence(String tool, boolean down) {
+            var result = new java.util.LinkedHashMap<String, Object>();
+            result.put("targetId", "demo-local");
+            result.put("observedAt", "2026-10-17T00:00:00Z");
+            switch (tool) {
+                case "inspect_application" -> {
+                    result.put("kind", "application");
+                    result.put("status", down ? "DEGRADED" : "UP");
+                    result.put("probes", List.of(Map.of("name", "liveness", "status", "UP", "code", "OK", "httpStatus", 200),
+                            Map.of("name", "health", "status", "UP", "code", "OK", "httpStatus", 200),
+                            Map.of("name", "product", "status", down ? "DOWN" : "UP", "code", down ? "REDIS_UNAVAILABLE" : "OK",
+                                    "httpStatus", down ? 503 : 200)));
+                }
+                case "inspect_redis" -> {
+                    result.put("kind", "redis");
+                    result.put("status", down ? "DOWN" : "UP");
+                    result.put("code", down ? "CONNECTION_REFUSED" : "PONG");
+                }
+                case "read_recent_logs" -> {
+                    result.put("kind", "logs");
+                    result.put("status", "AVAILABLE");
+                    result.put("lines", List.of(down ? "fixture: PRODUCT_QUERY_FAILED REDIS_UNAVAILABLE" : "fixture: PRODUCT_QUERY_OK"));
+                }
+                default -> throw new IllegalArgumentException("测试工具未登记");
+            }
+            return result;
         }
     }
 }

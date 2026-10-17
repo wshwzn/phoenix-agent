@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -41,6 +42,7 @@ class ChatIntegrationTests {
     private static ConfigurableApplicationContext mcpContext;
     private static HttpServer modelServer;
     private static AtomicInteger toolCalls;
+    private static AtomicBoolean dependencyDown;
 
     @Autowired
     private TestRestTemplate restTemplate;
@@ -56,6 +58,7 @@ class ChatIntegrationTests {
                         "--spring.main.banner-mode=off", "--phoenix.model.enabled=false");
         int mcpPort = ((ServletWebServerApplicationContext) mcpContext).getWebServer().getPort();
         toolCalls = mcpContext.getBean("fixtureToolCalls", AtomicInteger.class);
+        dependencyDown = mcpContext.getBean("fixtureDependencyDown", AtomicBoolean.class);
         modelServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         modelServer.createContext("/v1/chat/completions", ChatIntegrationTests::handleModelRequest);
         modelServer.start();
@@ -77,6 +80,7 @@ class ChatIntegrationTests {
     void resetCounters() {
         MODEL_REQUESTS.clear();
         toolCalls.set(0);
+        dependencyDown.set(false);
     }
 
     /**
@@ -250,6 +254,39 @@ class ChatIntegrationTests {
     }
 
     /**
+     * 三轮只读检查全部反馈给模型，依赖故障证据不会被误当成工具执行错误。
+     */
+    @Test
+    void shouldFeedAllDiagnosticEvidenceBackToModel() {
+        dependencyDown.set(true);
+        var response = restTemplate.postForEntity("/api/chat", Map.of("message", "检查 demo-local 商品查询故障"), JsonNode.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().path("answer").asText()).contains("Redis", "连接失败");
+        assertThat(response.getBody().path("toolCalls")).hasSize(3);
+        for (var trace : response.getBody().path("toolCalls")) {
+            assertThat(trace.path("status").asText()).isEqualTo("SUCCESS");
+            assertThat(trace.path("arguments").asText()).contains("demo-local");
+        }
+        assertThat(toolCalls.get()).isEqualTo(3);
+        assertThat(MODEL_REQUESTS).hasSize(4);
+        assertThat(MODEL_REQUESTS.getLast().path("messages").toString())
+                .contains("REDIS_UNAVAILABLE", "CONNECTION_REFUSED", "PRODUCT_QUERY_FAILED");
+        assertThat(MODEL_REQUESTS.getFirst().path("tools")).hasSize(4);
+    }
+
+    /**
+     * 正常证据同样经过三轮工具，脚本模型根据收到的结果返回正常结论。
+     */
+    @Test
+    void shouldCompleteHealthyDiagnosticConversation() {
+        var response = restTemplate.postForEntity("/api/chat", Map.of("message", "检查 demo-local 当前状态"), JsonNode.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().path("answer").asText()).contains("检查正常");
+        assertThat(toolCalls.get()).isEqualTo(3);
+        assertThat(MODEL_REQUESTS.getLast().path("messages").toString()).contains("PRODUCT_QUERY_OK", "PONG");
+    }
+
+    /**
      * 根据测试场景生成标准兼容协议响应，模拟模型决定而非由业务关键词路由工具。
      */
     private static void handleModelRequest(HttpExchange exchange) throws IOException {
@@ -274,8 +311,9 @@ class ChatIntegrationTests {
                 return;
             }
             boolean needsTool = userMessage.contains("检查") || userMessage.startsWith("模拟");
+            boolean diagnosis = userMessage.contains("demo-local");
             boolean callAgain = completedTools == 0 || userMessage.equals("模拟无限调用")
-                    || (userMessage.equals("多轮两次检查") && completedTools < 2);
+                    || (userMessage.equals("多轮两次检查") && completedTools < 2) || (diagnosis && completedTools < 3);
             Object message;
             String finishReason;
             if (needsTool && callAgain) {
@@ -284,14 +322,20 @@ class ChatIntegrationTests {
                 for (int index = 0; index < count; index++) {
                     String toolName = userMessage.equals("模拟未知工具") ? "restart_app" : "ping";
                     String arguments = userMessage.equals("模拟额外参数") ? "{\"extra\":true}" : "{}";
+                    if (diagnosis) {
+                        toolName = List.of("inspect_application", "inspect_redis", "read_recent_logs").get(completedTools);
+                        arguments = "{\"targetId\":\"demo-local\"}";
+                    }
                     calls.add(Map.of("id", "call-" + CALL_SEQUENCE.incrementAndGet(), "type", "function",
                             "function", Map.of("name", toolName, "arguments", arguments)));
                 }
                 message = Map.of("role", "assistant", "tool_calls", calls);
                 finishReason = "tool_calls";
             } else {
-                message = Map.of("role", "assistant", "content", completedTools == 0 ? "你好，我是 Phoenix。"
-                        : "MCP 服务返回 PONG，版本为 0.0.1-SNAPSHOT；这不代表目标应用健康。");
+                String answer = diagnosis ? request.path("messages").toString().contains("REDIS_UNAVAILABLE")
+                        ? "脚本结论：商品查询失败，Redis 连接失败，需要进一步确认网络或服务状态。" : "脚本结论：当前检查正常。"
+                        : completedTools == 0 ? "你好，我是 Phoenix。" : "MCP 服务返回 PONG，版本为 0.0.1-SNAPSHOT；这不代表目标应用健康。";
+                message = Map.of("role", "assistant", "content", answer);
                 finishReason = "stop";
             }
             sendJson(exchange, 200, Map.of("id", "local-completion", "object", "chat.completion",

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+    <springProperty scope="context" name="DIAGNOSTIC_LOG" source="phoenix.demo.diagnostic-log" defaultValue="./logs/diagnostic.log"/>
+    <appender name="DIAGNOSTIC" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${DIAGNOSTIC_LOG}</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${DIAGNOSTIC_LOG}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>1MB</maxFileSize>
+            <maxHistory>3</maxHistory>
+            <totalSizeCap>5MB</totalSizeCap>
+        </rollingPolicy>
+        <encoder><pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level %msg%n</pattern></encoder>
+    </appender>
+    <logger name="phoenix.demo.diagnostic" level="INFO" additivity="true">
+        <appender-ref ref="DIAGNOSTIC"/>
+    </logger>
+    <root level="INFO"><appender-ref ref="CONSOLE"/></root>
+</configuration>

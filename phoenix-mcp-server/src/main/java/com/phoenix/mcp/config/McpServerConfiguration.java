@@ -2,6 +2,9 @@ package com.phoenix.mcp.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.phoenix.mcp.tool.PingTool;
+import com.phoenix.mcp.tool.DiagnosticTools;
+import com.phoenix.mcp.diagnostic.config.DiagnosticProperties;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
@@ -18,14 +21,16 @@ import java.time.Duration;
  * 通过官方 Java SDK 暴露 Streamable HTTP，不引入 Spring AI。
  */
 @Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(DiagnosticProperties.class)
 public class McpServerConfiguration {
 
     /**
-     * 复用 Spring Boot 的 Jackson 2 配置处理 MCP JSON。
+     * 复制 Spring Boot 的 Jackson 2 配置，处理 MCP 时额外拒绝重复字段。
      */
     @Bean
     public McpJsonMapper mcpJsonMapper(ObjectMapper objectMapper) {
-        return new JacksonMcpJsonMapper(objectMapper);
+        return new JacksonMcpJsonMapper(objectMapper.copy()
+                .enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION));
     }
 
     /**
@@ -56,16 +61,18 @@ public class McpServerConfiguration {
     }
 
     /**
-     * 注册唯一的测试工具，并在应用停止时关闭协议会话。
+     * 注册连通性与固定目标只读工具，并在停止时关闭协议会话。
      */
     @Bean(destroyMethod = "closeGracefully")
     public McpSyncServer mcpServer(HttpServletStreamableServerTransportProvider transport,
-                                   McpJsonMapper jsonMapper, PingTool pingTool) {
+                                   McpJsonMapper jsonMapper, PingTool pingTool, DiagnosticTools diagnosticTools) {
+        var tools = new java.util.ArrayList<>(diagnosticTools.specifications(jsonMapper));
+        tools.addFirst(pingTool.specification(jsonMapper));
         return McpServer.sync(transport)
                 .jsonMapper(jsonMapper)
                 .serverInfo(PingTool.SERVICE_NAME, PingTool.SERVICE_VERSION)
                 .capabilities(McpSchema.ServerCapabilities.builder().tools(false).build())
-                .tools(pingTool.specification(jsonMapper))
+                .tools(tools)
                 .build();
     }
 }

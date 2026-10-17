@@ -7,6 +7,8 @@ import dev.langchain4j.mcp.client.DefaultMcpClient;
 import dev.langchain4j.mcp.client.McpClient;
 import dev.langchain4j.mcp.client.transport.http.StreamableHttpMcpTransport;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -48,14 +50,15 @@ class PhoenixMcpServerApplicationTests {
     }
 
     /**
-     * 通过真实 HTTP 握手发现无参数工具，并接收固定 JSON 结果。
+     * 通过真实 HTTP 发现四个受控工具，并调用无参数 ping。
      */
     @Test
     void shouldDiscoverAndInvokePingOverHttp() throws Exception {
         try (var client = createClient()) {
             var tools = client.listTools();
 
-            assertThat(tools).extracting(tool -> tool.name()).containsExactly("ping");
+            assertThat(tools).extracting(tool -> tool.name())
+                    .containsExactly("ping", "inspect_application", "inspect_redis", "read_recent_logs");
             assertThat(tools.getFirst().parameters().properties()).isEmpty();
             assertThat(tools.getFirst().parameters().additionalProperties()).isFalse();
 
@@ -91,6 +94,21 @@ class PhoenixMcpServerApplicationTests {
             assertThatThrownBy(() -> client.executeTool(ToolExecutionRequest.builder()
                     .name("ping").arguments("{\"command\":\"ignored\"}").build()))
                     .isInstanceOf(RuntimeException.class);
+        }
+    }
+
+    /**
+     * 直接调用 MCP 也不能传任意目标、地址、路径或异常日志条数。
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"targetId\":\"unknown\"}", "{\"targetId\":\"demo-local\",\"url\":\"http://localhost\"}",
+            "{\"targetId\":\"demo-local\",\"path\":\"../secrets\"}", "{\"targetId\":\"demo-local\",\"lines\":0}",
+            "{\"targetId\":\"demo-local\",\"lines\":81}", "{\"targetId\":\"demo-local\",\"lines\":1.5}",
+            "{\"targetId\":\"demo-local\",\"lines\":\"40\"}", "{\"targetId\":\"demo-local\",\"lines\":null}"})
+    void shouldRejectUnsafeDiagnosticArguments(String arguments) throws Exception {
+        try (var client = createClient()) {
+            assertThatThrownBy(() -> client.executeTool(ToolExecutionRequest.builder()
+                    .name("read_recent_logs").arguments(arguments).build())).isInstanceOf(RuntimeException.class);
         }
     }
 

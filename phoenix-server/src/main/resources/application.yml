@@ -24,7 +24,7 @@ management:
 info:
   application:
     name: ${spring.application.name}
-    description: Phoenix Agent 控制端（支持模型自主调用 MCP ping）
+    description: Phoenix Agent 控制端（支持固定目标的只读故障诊断）
 
 phoenix:
   model:
@@ -35,8 +35,8 @@ phoenix:
     request-timeout: ${PHOENIX_MODEL_REQUEST_TIMEOUT:30s}
     max-output-tokens: ${PHOENIX_MODEL_MAX_OUTPUT_TOKENS:2048}
   chat:
-    max-tool-rounds: ${PHOENIX_CHAT_MAX_TOOL_ROUNDS:3}
-    max-tool-calls: ${PHOENIX_CHAT_MAX_TOOL_CALLS:3}
+    max-tool-rounds: ${PHOENIX_CHAT_MAX_TOOL_ROUNDS:4}
+    max-tool-calls: ${PHOENIX_CHAT_MAX_TOOL_CALLS:6}
   mcp:
     server-url: ${PHOENIX_MCP_SERVER_URL:http://127.0.0.1:18081/mcp}
     request-timeout: ${PHOENIX_MCP_REQUEST_TIMEOUT:5s}

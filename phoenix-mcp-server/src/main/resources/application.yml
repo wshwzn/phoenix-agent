@@ -24,4 +24,12 @@ management:
 info:
   application:
     name: ${spring.application.name}
-    description: Phoenix MCP 工具服务（当前仅提供 ping 连通性测试）
+    description: Phoenix MCP 工具服务（固定目标的只读应用、Redis 和日志采集）
+
+phoenix:
+  diagnostic:
+    application-base-url: ${PHOENIX_DEMO_BASE_URL:http://127.0.0.1:18082}
+    redis-host: ${PHOENIX_DEMO_REDIS_HOST:127.0.0.1}
+    redis-port: ${PHOENIX_DEMO_REDIS_PORT:16379}
+    log-file: ${PHOENIX_DEMO_LOG_FILE:../demo/logs/diagnostic.log}
+    probe-timeout: 500ms
