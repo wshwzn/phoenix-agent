@@ -1,0 +1,9 @@
+# 复制为同目录 application-local.yml，填好后启用 local profile，工作目录设为 phoenix-server。
+# 本文件放在 classpath 外，不把本地密钥打进应用 JAR。
+# application-local.yml 已被 Git 忽略；本示例不包含真实密钥。
+phoenix:
+  model:
+    enabled: true
+    base-url: "https://your-provider.example/v1"
+    model-name: ""
+    api-key: ""

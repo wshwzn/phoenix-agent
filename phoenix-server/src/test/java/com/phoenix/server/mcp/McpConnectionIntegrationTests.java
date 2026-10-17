@@ -26,6 +26,7 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 通过独立随机端口的官方 SDK 协议服务验证控制端的完整 HTTP 检查链路。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class McpConnectionIntegrationTests {
+public class McpConnectionIntegrationTests {
 
     private static ConfigurableApplicationContext fixtureContext;
 
@@ -98,7 +99,15 @@ class McpConnectionIntegrationTests {
      */
     @TestConfiguration(proxyBeanMethods = false)
     @EnableAutoConfiguration
-    static class FixtureConfiguration {
+    public static class FixtureConfiguration {
+
+        /**
+         * 统计实际工具执行，供对话集成测试区分发现工具与调用工具。
+         */
+        @Bean
+        AtomicInteger fixtureToolCalls() {
+            return new AtomicInteger();
+        }
 
         /**
          * 为协议测试服务配置 Jackson 2 序列化。
@@ -132,17 +141,21 @@ class McpConnectionIntegrationTests {
          * 注册符合约定的最小工具，验证生产客户端而非测试替身客户端。
          */
         @Bean(destroyMethod = "closeGracefully")
-        McpSyncServer fixtureServer(HttpServletStreamableServerTransportProvider transport, McpJsonMapper mapper) {
+        McpSyncServer fixtureServer(HttpServletStreamableServerTransportProvider transport, McpJsonMapper mapper,
+                                   AtomicInteger fixtureToolCalls) {
             var tool = McpSchema.Tool.builder().name("ping")
                     .inputSchema(new McpSchema.JsonSchema("object", Map.of(), List.of(), false, null, null))
                     .build();
             return McpServer.sync(transport).jsonMapper(mapper)
                     .serverInfo("phoenix-mcp-server", "0.0.1-SNAPSHOT")
                     .capabilities(McpSchema.ServerCapabilities.builder().tools(false).build())
-                    .toolCall(tool, (exchange, request) -> McpSchema.CallToolResult.builder()
-                            .isError(false)
-                            .addTextContent("{\"service\":\"phoenix-mcp-server\",\"version\":\"0.0.1-SNAPSHOT\",\"status\":\"PONG\"}")
-                            .build())
+                    .toolCall(tool, (exchange, request) -> {
+                        fixtureToolCalls.incrementAndGet();
+                        return McpSchema.CallToolResult.builder()
+                                .isError(false)
+                                .addTextContent("{\"service\":\"phoenix-mcp-server\",\"version\":\"0.0.1-SNAPSHOT\",\"status\":\"PONG\"}")
+                                .build();
+                    })
                     .build();
         }
     }
