@@ -1,4 +1,4 @@
-package io.github.phoenixagent.demo;
+package com.phoenix.demo;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

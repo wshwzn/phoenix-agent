@@ -11,7 +11,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>io.github.phoenixagent</groupId>
+    <groupId>com.phoenix</groupId>
     <artifactId>phoenix-agent</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <packaging>pom</packaging>

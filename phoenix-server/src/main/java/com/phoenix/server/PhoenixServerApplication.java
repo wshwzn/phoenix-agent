@@ -1,4 +1,4 @@
-package io.github.phoenixagent.server;
+package com.phoenix.server;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

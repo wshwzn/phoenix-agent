@@ -1,4 +1,4 @@
-package io.github.phoenixagent.server;
+package com.phoenix.server;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

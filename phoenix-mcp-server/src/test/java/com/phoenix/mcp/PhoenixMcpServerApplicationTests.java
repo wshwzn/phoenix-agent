@@ -1,4 +1,4 @@
-package io.github.phoenixagent.mcp;
+package com.phoenix.mcp;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

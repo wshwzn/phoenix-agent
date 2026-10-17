@@ -1,4 +1,4 @@
-package io.github.phoenixagent.mcp;
+package com.phoenix.mcp;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

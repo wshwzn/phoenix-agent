@@ -1,4 +1,4 @@
-package io.github.phoenixagent.server;
+package com.phoenix.server;
 
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import org.bsc.langgraph4j.StateGraph;

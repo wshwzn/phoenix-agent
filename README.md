@@ -39,9 +39,11 @@ phoenix-agent/
 
 | 模块 | 启动类 | 健康检查 |
 | --- | --- | --- |
-| 控制端 | `PhoenixServerApplication` | `http://127.0.0.1:18080/actuator/health` |
-| 工具服务骨架 | `PhoenixMcpServerApplication` | `http://127.0.0.1:18081/actuator/health` |
-| 目标应用 | `PhoenixDemoApplication` | `http://127.0.0.1:18082/actuator/health` |
+| 控制端 | `com.phoenix.server.PhoenixServerApplication` | `http://127.0.0.1:18080/actuator/health` |
+| 工具服务骨架 | `com.phoenix.mcp.PhoenixMcpServerApplication` | `http://127.0.0.1:18081/actuator/health` |
+| 目标应用 | `com.phoenix.demo.PhoenixDemoApplication` | `http://127.0.0.1:18082/actuator/health` |
+
+Java 根包与 Maven `groupId` 统一为 `com.phoenix`。如果已有 IDEA 启动配置仍指向旧包，请重新运行上表中的入口类，或修改启动配置的主类。
 
 默认只监听本机回环地址；可通过进程环境变量 `SERVER_ADDRESS`、`SERVER_PORT` 覆盖。各模块提供 `/actuator/info` 查看应用身份，不暴露环境变量、配置值或健康组件详情。当前没有鉴权，不应开放到公网。
 
