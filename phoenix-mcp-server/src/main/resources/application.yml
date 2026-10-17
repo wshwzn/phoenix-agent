@@ -24,4 +24,4 @@ management:
 info:
   application:
     name: ${spring.application.name}
-    description: Phoenix 目标机工具服务骨架（尚未提供 MCP 协议）
+    description: Phoenix MCP 工具服务（当前仅提供 ping 连通性测试）

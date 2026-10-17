@@ -24,4 +24,9 @@ management:
 info:
   application:
     name: ${spring.application.name}
-    description: Phoenix Agent 控制端（初始化阶段）
+    description: Phoenix Agent 控制端（已接入 MCP 连通性检查）
+
+phoenix:
+  mcp:
+    server-url: ${PHOENIX_MCP_SERVER_URL:http://127.0.0.1:18081/mcp}
+    request-timeout: ${PHOENIX_MCP_REQUEST_TIMEOUT:5s}

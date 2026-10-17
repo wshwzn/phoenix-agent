@@ -4,9 +4,9 @@ Phoenix 面向开发者的应用故障排查场景：通过工具收集证据，
 
 ## 当前进度
 
-目前完成**项目初始化**：三个可独立启动的 Spring Boot 应用、健康检查、最小示例接口、框架冒烟测试与开发文档。
+目前完成项目初始化和**真实 MCP 通信链路**：三个可独立启动的 Spring Boot 应用、健康检查、最小示例接口，以及基于 Streamable HTTP 的握手、工具发现和固定 `ping` 调用。
 
-**尚未实现**真实模型调用、MCP 协议端点与工具、诊断任务、审批恢复、RAG、长期记忆和前端。`phoenix-mcp-server` 当前只是工具服务骨架；示例应用尚未依赖 Redis，停止 Redis 不会影响当前探活接口。
+**尚未实现**真实模型调用、业务采集与修复工具、诊断任务、审批恢复、RAG、长期记忆和前端。当前 `ping` 只返回工具服务的固定信息，不访问 `demo`，也不代表被排障应用健康。示例应用尚未依赖 Redis，停止 Redis 不会影响当前探活接口。
 
 ## 技术基础
 
@@ -14,9 +14,10 @@ Phoenix 面向开发者的应用故障排查场景：通过工具收集证据，
 - Spring Boot 3.5.16。
 - LangChain4j 1.22.0：后续承担模型与工具调用。
 - LangGraph4j 1.8.22：后续承担任务流程与暂停恢复。
+- MCP 客户端：LangChain4j MCP 1.22.0-beta32；服务端：官方 Java SDK 1.1.5，使用 Jackson 2 适配当前 Spring Boot。
 - 测试使用 JUnit 5、Spring Boot Test、AssertJ。
 
-当前仅验证客户端构建与最小图执行，不等同于验证真实模型、远程 MCP 或持久化恢复。版本选择参考 [Spring Boot 系统要求](https://docs.spring.io/spring-boot/3.5/system-requirements.html) 和 [LangGraph4j 官方集成示例](https://langgraph4j.github.io/langgraph4j/main/how-tos/basic-reflection/)，后续按实际集成测试调整。
+当前已验证本机真实 HTTP MCP 通信、客户端构建与最小图执行，不等同于验证真实模型、跨机器部署或持久化恢复。版本选择参考 [Spring Boot 系统要求](https://docs.spring.io/spring-boot/3.5/system-requirements.html)、[LangGraph4j 官方集成示例](https://langgraph4j.github.io/langgraph4j/main/how-tos/basic-reflection/) 和 [Java MCP SDK](https://github.com/modelcontextprotocol/java-sdk)，后续按实际集成测试调整。
 
 ## 项目结构
 
@@ -24,7 +25,7 @@ Phoenix 面向开发者的应用故障排查场景：通过工具收集证据，
 phoenix-agent/
 ├─ pom.xml                 Maven 父工程，统一版本与聚合构建
 ├─ phoenix-server/         Agent 控制端，默认端口 18080
-├─ phoenix-mcp-server/     目标机工具服务骨架，默认端口 18081
+├─ phoenix-mcp-server/     MCP 工具服务，默认端口 18081
 ├─ demo/                   最小目标应用，默认端口 18082
 │  └─ compose.yaml         可选的独立 Redis 演示环境
 ├─ docs/                   随实现更新的正式文档
@@ -40,7 +41,7 @@ phoenix-agent/
 | 模块 | 启动类 | 健康检查 |
 | --- | --- | --- |
 | 控制端 | `com.phoenix.server.PhoenixServerApplication` | `http://127.0.0.1:18080/actuator/health` |
-| 工具服务骨架 | `com.phoenix.mcp.PhoenixMcpServerApplication` | `http://127.0.0.1:18081/actuator/health` |
+| 工具服务 | `com.phoenix.mcp.PhoenixMcpServerApplication` | `http://127.0.0.1:18081/actuator/health` |
 | 目标应用 | `com.phoenix.demo.PhoenixDemoApplication` | `http://127.0.0.1:18082/actuator/health` |
 
 Java 根包与 Maven `groupId` 统一为 `com.phoenix`。如果已有 IDEA 启动配置仍指向旧包，请重新运行上表中的入口类，或修改启动配置的主类。
@@ -61,6 +62,34 @@ curl.exe http://127.0.0.1:18082/api/demo/ping
 ```
 
 macOS / Linux 使用 `./mvnw` 替换 `.\mvnw.cmd`。首次执行 Wrapper 会下载 Maven，首次构建也需要联网解析依赖。
+
+## 验证 MCP 连通性
+
+分别启动 `PhoenixMcpServerApplication` 和 `PhoenixServerApplication`，无需启动 `demo`、Redis 或模型，然后访问：
+
+```powershell
+curl.exe http://127.0.0.1:18080/api/mcp/check
+```
+
+正常返回示例：
+
+```json
+{
+  "transport": "STREAMABLE_HTTP",
+  "tools": ["ping"],
+  "ping": {
+    "service": "phoenix-mcp-server",
+    "version": "0.0.1-SNAPSHOT",
+    "status": "PONG"
+  }
+}
+```
+
+MCP 协议入口是工具服务的 `http://127.0.0.1:18081/mcp`，不是普通网页或 REST 探活地址；浏览器直接打开它不等于完成 MCP 检查。
+
+控制端默认连接上述地址，可通过 `PHOENIX_MCP_SERVER_URL` 覆盖；`PHOENIX_MCP_REQUEST_TIMEOUT` 默认 `5s`，有效范围为大于 0、不超过 30 秒，作用于各次网络请求与初始化/执行阶段，并非整个检查流程的总耗时上限。URL 不接受凭据、查询参数或片段。客户端按检查请求建立短会话，用完关闭；对端未启动不影响控制端启动，但检查接口返回 HTTP 502。
+
+当前检查接口只调用固定的无参数 `ping`，不提供任意 URL、工具名或命令执行入口。工具端拒绝携带 `Origin` 的请求，不支持浏览器直接连接。双方尚无身份鉴权，只能用于本机联调，不要公开到公网。协议约定与测试范围见 [MCP 连通性](docs/MCP连通性.md)。
 
 ## 测试与打包
 
